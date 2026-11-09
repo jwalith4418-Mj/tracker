@@ -16,17 +16,16 @@ on:
         description: Run a fresh scan before publishing
         type: boolean
         default: true
+      allow_drop:
+        description: Accept a scan whose wheel counts fell more than 10% (a genuine change, not an outage)
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: ["site/**", "scripts/**", ".github/workflows/scan.yml"]
 
 permissions:
   contents: read
-
-# Scans queue behind each other but never behind (or get cancelled by) site pushes.
-concurrency:
-  group: ${{ github.event_name == 'push' && 'publish-site' || 'scan' }}
-  cancel-in-progress: false
 
 env:
   # The wheelgap release that produces the data. Bump it to pick up new targets.
@@ -37,6 +36,9 @@ jobs:
   scan:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scan)
     runs-on: ubuntu-latest
+    concurrency:
+      group: scan
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,6 +53,8 @@ jobs:
           done
           exit 1
       - name: Check the scan looks right
+        env:
+          ALLOW_DROP: ${{ inputs.allow_drop && '1' || '' }}
         run: python3 scripts/check_scan.py data/coverage.json data/history.json "$TOP"
       - name: Update history
         run: python3 scripts/update_history.py data/coverage.json data/history.json
@@ -82,15 +86,24 @@ jobs:
           git add data/coverage.json data/history.json
           git diff --cached --quiet || git commit -m "Scan $(date -u +%Y-%m-%d)"
           for attempt in 1 2 3 4 5; do
-            git push && break
+            if git push; then
+              echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep $((attempt * 10))
             git pull --rebase origin main
           done
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "couldn't push the scan after 5 attempts" >&2
+          exit 1
 
   publish:
     needs: [scan, commit]
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
+    # One deploy at a time, each from the latest main, so an older run can't overwrite newer data.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write
@@ -100,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.commit.outputs.sha || github.sha }} # exactly the data the commit job pushed
+          ref: main # the latest site and data, including anything the commit job just pushed
           persist-credentials: false
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Assemble the site

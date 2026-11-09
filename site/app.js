@@ -11,6 +11,7 @@ const PLATFORM_NAMES = {
   "win-arm64": ["Windows ARM64", "win_arm64"],
   "pyodide": ["Pyodide (browser)", "wasm32 · PyPI wheels only"],
 };
+const platformName = (p) => (Object.hasOwn(PLATFORM_NAMES, p) ? PLATFORM_NAMES[p] : [p, ""]);
 const STATUS_TEXT = { wheel: "wheel", source: "from source", missing: "can't install", unknown: "unknown" };
 const PAGE = 50;
 
@@ -61,7 +62,7 @@ function renderPlatforms() {
     .filter((t) => t.python === state.python)
     .map((t) => {
       const s = d.summary[t.label];
-      const [name, detail] = PLATFORM_NAMES[t.platform] ?? [t.platform, ""];
+      const [name, detail] = platformName(t.platform);
       const prev = previousSummary(t.label);
       const delta = prev ? s.wheel - prev.wheel : 0;
       const trend = delta ? ` <small>${delta > 0 ? "+" : ""}${delta} since last scan</small>` : "";
@@ -79,7 +80,7 @@ function renderPlatforms() {
 
 function renderGaps() {
   const i = targetIndex(state.python, state.platform);
-  const [name] = PLATFORM_NAMES[state.platform] ?? [state.platform];
+  const [name] = platformName(state.platform);
   $("gaps-platform").textContent = `${name}, Python ${state.python}`;
   if (i < 0) {
     $("gaps").innerHTML = `<li class="empty">Not scanned for Python ${esc(state.python)} (no Pyodide build for this version).</li>`;

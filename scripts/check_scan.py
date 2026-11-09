@@ -9,6 +9,7 @@ dropping sharply since the last entry in the history (a PyPI outage, not a real 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -29,12 +30,15 @@ def problems(scan: dict, history: list[dict], top: int) -> list[str]:
     errors = scan.get("lookup_errors", sum(1 for p in scan.get("packages", []) if p.get("error")))
     if n and errors > MAX_ERROR_SHARE * n:
         out.append(f"{errors} of {n} lookups failed")
-    if history:
+    if history and not os.environ.get("ALLOW_DROP"):
         previous = history[-1].get("summary", {})
         for label, counts in scan.get("summary", {}).items():
             before = previous.get(label, {}).get("wheel")
             if before and counts.get("wheel", 0) < (1 - MAX_DROP) * before:
-                out.append(f"{label}: wheels fell from {before} to {counts.get('wheel', 0)}")
+                out.append(
+                    f"{label}: wheels fell from {before} to {counts.get('wheel', 0)} "
+                    "(if that's real, run the workflow by hand with allow_drop)"
+                )
     return out
 
 
