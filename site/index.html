@@ -10,7 +10,7 @@
 </head>
 <body>
   <header class="wrap">
-    <p class="eyebrow"><a href="https://github.com/patrickballard/wheelgap">wheelgap</a> tracker</p>
+    <p class="eyebrow"><a href="https://github.com/wheelgap/wheelgap">wheelgap</a> tracker</p>
     <h1>Python wheel coverage</h1>
     <p class="lede">Which of the <strong id="n-packages">top</strong> most-downloaded PyPI packages ship a prebuilt wheel for each platform. A package without one is compiled from source on install, which is slow and needs a compiler, or can't be installed at all.</p>
     <p class="meta" id="meta">Loading the latest scan…</p>
@@ -53,12 +53,12 @@
       <h2>Check your own project</h2>
       <p>The same check runs on your lockfile, for exactly the versions you pin:</p>
       <pre><code>uvx wheelgap -p 3.13 -t linux-aarch64,musl-aarch64 --explain</code></pre>
-      <p>It reads <code>uv.lock</code>, <code>poetry.lock</code>, <code>pdm.lock</code>, <code>Pipfile.lock</code>, <code>pylock.toml</code> and <code>requirements.txt</code>, and works as a GitHub Action and a pre-commit hook. <a href="https://github.com/patrickballard/wheelgap">wheelgap on GitHub</a></p>
+      <p>It reads <code>uv.lock</code>, <code>poetry.lock</code>, <code>pdm.lock</code>, <code>Pipfile.lock</code>, <code>pylock.toml</code> and <code>requirements.txt</code>, and works as a GitHub Action and a pre-commit hook. <a href="https://github.com/wheelgap/wheelgap">wheelgap on GitHub</a></p>
     </section>
   </main>
 
   <footer class="wrap">
-    <p>Each night, wheelgap checks the latest release of the top packages from <a href="https://hugovk.dev/top-pypi-packages/">top-pypi-packages</a> against every platform. Pyodide counts only wheels on PyPI; it also ships its own builds of many popular packages. <a href="data/coverage.json">Raw data</a> (CC0) · <a href="https://github.com/wheelgap/tracker">Source</a> · <a href="https://github.com/patrickballard/wheelgap/discussions/43">Roadmap</a> · <a href="https://github.com/patrickballard/wheelgap/issues/new?template=bug_report.yml">Report a wrong result</a></p>
+    <p>Each night, wheelgap checks the latest release of the top packages from <a href="https://hugovk.dev/top-pypi-packages/">top-pypi-packages</a> against every platform. Pyodide counts only wheels on PyPI; it also ships its own builds of many popular packages. <a href="data/coverage.json">Raw data</a> (CC0) · <a href="https://github.com/wheelgap/tracker">Source</a> · <a href="https://github.com/wheelgap/wheelgap/discussions/43">Roadmap</a> · <a href="https://github.com/wheelgap/wheelgap/issues/new?template=bug_report.yml">Report a wrong result</a></p>
   </footer>
 
   <script src="app.js"></script>
