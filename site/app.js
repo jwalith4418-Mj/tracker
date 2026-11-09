@@ -15,7 +15,7 @@ const STATUS_TEXT = { wheel: "wheel", source: "from source", missing: "can't ins
 const PAGE = 50;
 
 const $ = (id) => document.getElementById(id);
-const fmt = (n) => n.toLocaleString("en-GB");
+const fmt = (n) => (typeof n === "number" ? n.toLocaleString("en-GB") : String(n ?? ""));
 const pct = (n, d) => (d ? (100 * n) / d : 0).toFixed(1);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -69,7 +69,7 @@ function renderPlatforms() {
       return `<li><button data-platform="${esc(t.platform)}" aria-pressed="${t.platform === state.platform}"
           aria-label="${esc(name)}: ${pct(s.wheel, n)}% have a wheel">
         <span class="pname">${esc(name)}<small>${esc(detail)}</small></span>
-        <span class="bar" title="${fmt(s.wheel)} wheel · ${fmt(s.source)} from source · ${fmt(s.missing)} can't install">
+        <span class="bar" title="${esc(fmt(s.wheel))} wheel · ${esc(fmt(s.source))} from source · ${esc(fmt(s.missing))} can't install">
           ${seg("wheel")}${seg("source")}${seg("missing")}${seg("unknown")}</span>
         <span class="pct">${pct(s.wheel, n)}%<small>${fmt(n - s.wheel)} without${trend}</small></span>
       </button></li>`;
@@ -92,9 +92,9 @@ function renderGaps() {
       .slice(0, state.shown)
       .map((p) => {
         const s = p.results[i];
-        return `<li><span class="rank">#${p.rank}</span>
+        return `<li><span class="rank">#${esc(p.rank)}</span>
           <span><a href="https://pypi.org/project/${encodeURIComponent(p.name)}/${encodeURIComponent(p.version ?? "")}">${esc(p.name)}</a><span class="ver">${esc(p.version ?? "")}</span></span>
-          <span class="status s-${s}">${STATUS_TEXT[s] ?? s}</span></li>`;
+          <span class="status s-${esc(s)}">${esc(STATUS_TEXT[s] ?? s)}</span></li>`;
       })
       .join("") || `<li class="empty">Every package has a wheel here.</li>`;
   $("more").hidden = gaps.length <= state.shown;
@@ -119,11 +119,11 @@ function renderLookup(query) {
     const i = targetIndex(py, pl);
     if (i < 0) return `<td><span class="status s-none">n/a</span></td>`;
     const s = p.results[i];
-    return `<td><span class="status s-${s}">${STATUS_TEXT[s] ?? s}</span></td>`;
+    return `<td><span class="status s-${esc(s)}">${esc(STATUS_TEXT[s] ?? s)}</span></td>`;
   };
   $("lookup").innerHTML = `<div class="card">
     <h3>${esc(p.name)} <span class="ver">${esc(p.version ?? "")}</span></h3>
-    <p class="sub">#${p.rank} by downloads${p.pure ? " · pure Python: installs everywhere" : ""}${p.error ? ` · lookup failed: ${esc(p.error)}` : ""} ·
+    <p class="sub">#${esc(p.rank)} by downloads${p.pure ? " · pure Python: installs everywhere" : ""}${p.error ? ` · lookup failed: ${esc(p.error)}` : ""} ·
       <a href="https://pypi.org/project/${encodeURIComponent(p.name)}/">PyPI</a></p>
     <div class="matrix-scroll"><table class="matrix">
       <thead><tr><th>Platform</th>${pys.map((py) => `<th>${esc(py)}</th>`).join("")}</tr></thead>
@@ -138,7 +138,7 @@ function renderLookup(query) {
 function readHash() {
   const params = new URLSearchParams(location.hash.slice(1));
   if (params.get("python") && pythons().includes(params.get("python"))) state.python = params.get("python");
-  if (params.get("platform") && PLATFORM_NAMES[params.get("platform")]) state.platform = params.get("platform");
+  if (params.get("platform") && Object.hasOwn(PLATFORM_NAMES, params.get("platform"))) state.platform = params.get("platform");
   return params.get("package") ?? "";
 }
 
