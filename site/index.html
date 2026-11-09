@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Python Wheel Coverage</title>
+  <meta name="description" content="Which of the top 5,000 PyPI packages ship a prebuilt wheel for Linux ARM, Alpine, Windows on ARM, macOS, free-threaded Python and Pyodide. Updated nightly by wheelgap.">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%23d97706' stroke-width='4' stroke-dasharray='62 20'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="wrap">
+    <p class="eyebrow"><a href="https://github.com/patrickballard/wheelgap">wheelgap</a> tracker</p>
+    <h1>Python wheel coverage</h1>
+    <p class="lede">Which of the <strong id="n-packages">top</strong> most-downloaded PyPI packages ship a prebuilt wheel for each platform. A package without one is compiled from source on install, which is slow and needs a compiler, or can't be installed at all.</p>
+    <p class="meta" id="meta">Loading the latest scan…</p>
+  </header>
+
+  <main class="wrap">
+    <section aria-labelledby="overview-title">
+      <div class="section-head">
+        <h2 id="overview-title">Coverage by platform</h2>
+        <div class="tabs" role="tablist" aria-label="Python version" id="python-tabs"></div>
+      </div>
+      <p class="note" id="pure-note"></p>
+      <ol class="platforms" id="platforms" aria-live="polite"></ol>
+      <p class="legend">
+        <span><i class="sw sw-wheel"></i> wheel</span>
+        <span><i class="sw sw-source"></i> builds from source</span>
+        <span><i class="sw sw-missing"></i> can't install (no wheel, no source build)</span>
+      </p>
+    </section>
+
+    <section aria-labelledby="lookup-title">
+      <h2 id="lookup-title">Look up a package</h2>
+      <form class="search" id="search-form" role="search">
+        <label for="search" class="visually-hidden">Package name</label>
+        <input id="search" list="package-names" placeholder="e.g. numpy, psycopg2, orjson" autocomplete="off" spellcheck="false">
+        <datalist id="package-names"></datalist>
+        <button type="submit">Look up</button>
+      </form>
+      <div id="lookup" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="gaps-title">
+      <h2 id="gaps-title">Packages without a wheel on <span id="gaps-platform">…</span></h2>
+      <p class="note">Most-downloaded first. Click a platform above to switch.</p>
+      <ol class="gaps" id="gaps"></ol>
+      <button class="more" id="more" hidden>Show more</button>
+    </section>
+
+    <section class="cta">
+      <h2>Check your own project</h2>
+      <p>The same check runs on your lockfile, for exactly the versions you pin:</p>
+      <pre><code>uvx wheelgap -p 3.13 -t linux-aarch64,musl-aarch64 --explain</code></pre>
+      <p>It reads <code>uv.lock</code>, <code>poetry.lock</code>, <code>pdm.lock</code>, <code>Pipfile.lock</code>, <code>pylock.toml</code> and <code>requirements.txt</code>, and works as a GitHub Action and a pre-commit hook. <a href="https://github.com/patrickballard/wheelgap">wheelgap on GitHub</a></p>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <p>Each night, wheelgap checks the latest release of the top packages from <a href="https://hugovk.dev/top-pypi-packages/">top-pypi-packages</a> against every platform. Pyodide counts only wheels on PyPI; it also ships its own builds of many popular packages. <a href="data/coverage.json">Raw data</a> (CC0) · <a href="https://github.com/wheelgap/tracker">Source</a> · <a href="https://github.com/patrickballard/wheelgap/discussions/43">Roadmap</a> · <a href="https://github.com/patrickballard/wheelgap/issues/new?template=bug_report.yml">Report a wrong result</a></p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

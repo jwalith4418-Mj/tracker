@@ -1,0 +1,208 @@
+"use strict";
+
+const PLATFORM_NAMES = {
+  "linux-x86_64": ["Linux x86_64", "glibc · manylinux"],
+  "linux-aarch64": ["Linux ARM64", "glibc · manylinux"],
+  "musl-x86_64": ["Alpine x86_64", "musl · musllinux"],
+  "musl-aarch64": ["Alpine ARM64", "musl · musllinux"],
+  "macos-arm64": ["macOS Apple silicon", "macosx arm64"],
+  "macos-x86_64": ["macOS Intel", "macosx x86_64"],
+  "win-amd64": ["Windows x86_64", "win_amd64"],
+  "win-arm64": ["Windows ARM64", "win_arm64"],
+  "pyodide": ["Pyodide (browser)", "wasm32 · PyPI wheels only"],
+};
+const STATUS_TEXT = { wheel: "wheel", source: "from source", missing: "can't install", unknown: "unknown" };
+const PAGE = 50;
+
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => n.toLocaleString("en-GB");
+const pct = (n, d) => (d ? (100 * n) / d : 0).toFixed(1);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+const state = { data: null, history: [], python: null, platform: "musl-aarch64", shown: PAGE };
+
+function pythons() {
+  return [...new Set(state.data.targets.map((t) => t.python))];
+}
+
+function targetIndex(python, platform) {
+  return state.data.targets.findIndex((t) => t.python === python && t.platform === platform);
+}
+
+function renderMeta() {
+  const d = state.data;
+  const date = new Date(d.generated);
+  $("n-packages").textContent = fmt(d.packages.length);
+  $("meta").textContent =
+    `Latest scan ${date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} · ` +
+    `wheelgap ${d.wheelgap} · download ranking from ${d.top_packages.last_update?.slice(0, 10) ?? "top-pypi-packages"}`;
+  const pure = d.packages.filter((p) => p.pure).length;
+  $("pure-note").textContent =
+    `${fmt(pure)} of the ${fmt(d.packages.length)} are pure Python and install everywhere; ` +
+    `the gaps are among the ${fmt(d.packages.length - pure)} with compiled code.`;
+  $("package-names").innerHTML = d.packages.map((p) => `<option value="${esc(p.name)}">`).join("");
+}
+
+function renderTabs() {
+  $("python-tabs").innerHTML = pythons()
+    .map((py) => `<button role="tab" aria-selected="${py === state.python}" data-python="${esc(py)}">Python ${esc(py)}</button>`)
+    .join("");
+}
+
+function previousSummary(label) {
+  const h = state.history;
+  return h.length > 1 ? h[h.length - 2].summary[label] : null;
+}
+
+function renderPlatforms() {
+  const d = state.data;
+  const n = d.packages.length;
+  const rows = d.targets
+    .filter((t) => t.python === state.python)
+    .map((t) => {
+      const s = d.summary[t.label];
+      const [name, detail] = PLATFORM_NAMES[t.platform] ?? [t.platform, ""];
+      const prev = previousSummary(t.label);
+      const delta = prev ? s.wheel - prev.wheel : 0;
+      const trend = delta ? ` <small>${delta > 0 ? "+" : ""}${delta} since last scan</small>` : "";
+      const seg = (k) => `<span class="b-${k}" style="width:${pct(s[k], n)}%"></span>`;
+      return `<li><button data-platform="${esc(t.platform)}" aria-pressed="${t.platform === state.platform}"
+          aria-label="${esc(name)}: ${pct(s.wheel, n)}% have a wheel">
+        <span class="pname">${esc(name)}<small>${esc(detail)}</small></span>
+        <span class="bar" title="${fmt(s.wheel)} wheel · ${fmt(s.source)} from source · ${fmt(s.missing)} can't install">
+          ${seg("wheel")}${seg("source")}${seg("missing")}${seg("unknown")}</span>
+        <span class="pct">${pct(s.wheel, n)}%<small>${fmt(n - s.wheel)} without${trend}</small></span>
+      </button></li>`;
+    });
+  $("platforms").innerHTML = rows.join("");
+}
+
+function renderGaps() {
+  const i = targetIndex(state.python, state.platform);
+  const [name] = PLATFORM_NAMES[state.platform] ?? [state.platform];
+  $("gaps-platform").textContent = `${name}, Python ${state.python}`;
+  if (i < 0) {
+    $("gaps").innerHTML = `<li class="empty">Not scanned for Python ${esc(state.python)} (no Pyodide build for this version).</li>`;
+    $("more").hidden = true;
+    return;
+  }
+  const gaps = state.data.packages.filter((p) => p.results[i] !== "wheel");
+  $("gaps").innerHTML =
+    gaps
+      .slice(0, state.shown)
+      .map((p) => {
+        const s = p.results[i];
+        return `<li><span class="rank">#${p.rank}</span>
+          <span><a href="https://pypi.org/project/${encodeURIComponent(p.name)}/${encodeURIComponent(p.version ?? "")}">${esc(p.name)}</a><span class="ver">${esc(p.version ?? "")}</span></span>
+          <span class="status s-${s}">${STATUS_TEXT[s] ?? s}</span></li>`;
+      })
+      .join("") || `<li class="empty">Every package has a wheel here.</li>`;
+  $("more").hidden = gaps.length <= state.shown;
+  $("more").textContent = `Show more (${fmt(gaps.length - state.shown)} left)`;
+}
+
+function renderLookup(query) {
+  const q = query.trim().toLowerCase().replace(/[-_.]+/g, "-");
+  if (!q) {
+    $("lookup").innerHTML = "";
+    return;
+  }
+  const p = state.data.packages.find((x) => x.name.toLowerCase().replace(/[-_.]+/g, "-") === q);
+  if (!p) {
+    $("lookup").innerHTML = `<div class="card"><p class="sub">${esc(query)} isn't in the top ${fmt(state.data.packages.length)}.
+      Check it, or any package at a pinned version, locally: <code>uvx wheelgap ${esc(query.trim())} -t all</code></p></div>`;
+    return;
+  }
+  const pys = pythons();
+  const platforms = Object.keys(PLATFORM_NAMES).filter((pl) => state.data.targets.some((t) => t.platform === pl));
+  const cell = (py, pl) => {
+    const i = targetIndex(py, pl);
+    if (i < 0) return `<td><span class="status s-none">n/a</span></td>`;
+    const s = p.results[i];
+    return `<td><span class="status s-${s}">${STATUS_TEXT[s] ?? s}</span></td>`;
+  };
+  $("lookup").innerHTML = `<div class="card">
+    <h3>${esc(p.name)} <span class="ver">${esc(p.version ?? "")}</span></h3>
+    <p class="sub">#${p.rank} by downloads${p.pure ? " · pure Python: installs everywhere" : ""}${p.error ? ` · lookup failed: ${esc(p.error)}` : ""} ·
+      <a href="https://pypi.org/project/${encodeURIComponent(p.name)}/">PyPI</a></p>
+    <div class="matrix-scroll"><table class="matrix">
+      <thead><tr><th>Platform</th>${pys.map((py) => `<th>${esc(py)}</th>`).join("")}</tr></thead>
+      <tbody>${platforms
+        .map((pl) => `<tr><th scope="row">${esc(PLATFORM_NAMES[pl][0])}</th>${pys.map((py) => cell(py, pl)).join("")}</tr>`)
+        .join("")}</tbody>
+    </table></div>
+    <p class="sub" style="margin:12px 0 0">Why? <code>uvx wheelgap ${esc(p.name)}==${esc(p.version ?? "")} -p ${esc(state.python)} -t ${esc(state.platform)} --explain</code></p>
+  </div>`;
+}
+
+function readHash() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (params.get("python") && pythons().includes(params.get("python"))) state.python = params.get("python");
+  if (params.get("platform") && PLATFORM_NAMES[params.get("platform")]) state.platform = params.get("platform");
+  return params.get("package") ?? "";
+}
+
+function writeHash() {
+  const params = new URLSearchParams({ python: state.python, platform: state.platform });
+  const pkg = $("search").value.trim();
+  if (pkg) params.set("package", pkg);
+  history.replaceState(null, "", `#${params}`);
+}
+
+function renderAll() {
+  renderTabs();
+  renderPlatforms();
+  renderGaps();
+  writeHash();
+}
+
+async function main() {
+  const [data, hist] = await Promise.all([
+    fetch("data/coverage.json").then((r) => r.json()),
+    fetch("data/history.json").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+  ]);
+  state.data = data;
+  state.history = hist;
+  state.python = pythons()[0];
+  const pkg = readHash();
+  renderMeta();
+  renderAll();
+  if (pkg) {
+    $("search").value = pkg;
+    renderLookup(pkg);
+  }
+
+  $("python-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-python]");
+    if (!b) return;
+    state.python = b.dataset.python;
+    state.shown = PAGE;
+    renderAll();
+    renderLookup($("search").value);
+  });
+  $("platforms").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-platform]");
+    if (!b) return;
+    state.platform = b.dataset.platform;
+    state.shown = PAGE;
+    renderAll();
+    $("gaps-title").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  $("more").addEventListener("click", () => {
+    state.shown += PAGE;
+    renderGaps();
+  });
+  $("search-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    renderLookup($("search").value);
+    writeHash();
+  });
+  $("search").addEventListener("change", () => {
+    renderLookup($("search").value);
+    writeHash();
+  });
+}
+
+main().catch((err) => {
+  $("meta").textContent = `Couldn't load the data (${err.message}).`;
+});
