@@ -1,0 +1,52 @@
+"""Refuse to publish a scan that looks wrong, before it reaches the site or the history.
+
+    python scripts/check_scan.py data/coverage.json data/history.json 5000
+
+Checks: enough packages, every target summarised, few lookup errors, and no target's wheel count
+dropping sharply since the last entry in the history (a PyPI outage, not a real change).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+MIN_PACKAGE_SHARE = 0.95
+MAX_ERROR_SHARE = 0.05
+MAX_DROP = 0.10
+
+
+def problems(scan: dict, history: list[dict], top: int) -> list[str]:
+    out = []
+    n = len(scan.get("packages", []))
+    if n < MIN_PACKAGE_SHARE * top:
+        out.append(f"only {n} packages, expected about {top}")
+    labels = [t["label"] for t in scan.get("targets", [])]
+    missing = [label for label in labels if label not in scan.get("summary", {})]
+    if not labels or missing:
+        out.append(f"targets without a summary: {missing or 'no targets at all'}")
+    errors = scan.get("lookup_errors", sum(1 for p in scan.get("packages", []) if p.get("error")))
+    if n and errors > MAX_ERROR_SHARE * n:
+        out.append(f"{errors} of {n} lookups failed")
+    if history and not os.environ.get("ALLOW_DROP"):
+        previous = history[-1].get("summary", {})
+        for label, counts in scan.get("summary", {}).items():
+            before = previous.get(label, {}).get("wheel")
+            if before and counts.get("wheel", 0) < (1 - MAX_DROP) * before:
+                out.append(
+                    f"{label}: wheels fell from {before} to {counts.get('wheel', 0)} "
+                    "(if that's real, run the workflow by hand with allow_drop)"
+                )
+    return out
+
+
+if __name__ == "__main__":
+    scan_path, history_path, top = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
+    scan = json.loads(scan_path.read_text(encoding="utf-8"))
+    history = json.loads(history_path.read_text(encoding="utf-8")) if history_path.exists() else []
+    found = problems(scan, history, top)
+    for p in found:
+        print(f"check_scan: {p}", file=sys.stderr)
+    sys.exit(1 if found else 0)

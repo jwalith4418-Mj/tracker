@@ -1,7 +1,11 @@
 name: Scan and publish
 
-# Nightly: scan the top PyPI packages with wheelgap, commit the data, and publish the site.
-# Pushing a change to the site (or running this by hand) republishes without waiting for the night.
+# Nightly: scan the top PyPI packages with wheelgap, check the result, commit the data, and publish
+# the site. Pushing a change to the site (or running this by hand) republishes without a scan.
+#
+# Hardening: the scan runs third-party code (wheelgap and its dependencies from PyPI) with a
+# read-only token and no stored credentials. A separate job, which runs no third-party code,
+# commits only data/. Every action is pinned to a commit.
 
 on:
   schedule:
@@ -12,16 +16,16 @@ on:
         description: Run a fresh scan before publishing
         type: boolean
         default: true
+      allow_drop:
+        description: Accept a scan whose wheel counts fell more than 10% (a genuine change, not an outage)
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: ["site/**", "scripts/**", ".github/workflows/scan.yml"]
 
 permissions:
   contents: read
-
-concurrency:
-  group: scan-and-publish
-  cancel-in-progress: false
 
 env:
   # The wheelgap release that produces the data. Bump it to pick up new targets.
@@ -32,11 +36,15 @@ jobs:
   scan:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scan)
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    concurrency:
+      group: scan
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main # the latest history, even if this run waited behind another scan
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - name: Scan
         # Retry with a fresh index: a release can take a few minutes to reach PyPI's CDN.
         run: |
@@ -45,20 +53,58 @@ jobs:
             echo "attempt $attempt failed, retrying in 60s"; sleep 60
           done
           exit 1
+      - name: Check the scan looks right
+        env:
+          ALLOW_DROP: ${{ inputs.allow_drop && '1' || '' }}
+        run: python3 scripts/check_scan.py data/coverage.json data/history.json "$TOP"
       - name: Update history
-        run: uv run --no-project python scripts/update_history.py data/coverage.json data/history.json
-      - name: Commit
+        run: python3 scripts/update_history.py data/coverage.json data/history.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: data
+          path: |
+            data/coverage.json
+            data/history.json
+
+  commit:
+    needs: scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.push.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: data
+          path: data
+      - id: push
+        name: Commit only data/, retrying if main moved
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data
+          git add data/coverage.json data/history.json
           git diff --cached --quiet || git commit -m "Scan $(date -u +%Y-%m-%d)"
-          git push
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep $((attempt * 10))
+            git pull --rebase origin main
+          done
+          echo "couldn't push the scan after 5 attempts" >&2
+          exit 1
 
   publish:
-    needs: scan
-    if: ${{ !cancelled() && (needs.scan.result == 'success' || needs.scan.result == 'skipped') }}
+    needs: [scan, commit]
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
+    # One deploy at a time, each from the latest main, so an older run can't overwrite newer data.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write
@@ -66,17 +112,18 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main # include the data the scan job just pushed
-      - uses: actions/configure-pages@v6
+          ref: main # the latest site and data, including anything the commit job just pushed
+          persist-credentials: false
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Assemble the site
         run: |
           mkdir -p _site/data
           cp -r site/. _site/
           cp data/*.json _site/data/
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: _site
       - id: deploy
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
