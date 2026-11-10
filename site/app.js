@@ -159,13 +159,24 @@ function renderGaps() {
   $("more").textContent = `Show more (${fmt(gaps.length - state.shown)} left)`;
 }
 
+function canonicalName(name) {
+  return name.toLowerCase().replace(/[-_.]+/g, "-");
+}
+
+function badgeMarkdown(p) {
+  const name = canonicalName(p.name);
+  const badge = `https://img.shields.io/endpoint?url=https://wheelgap.github.io/tracker/badge/${name}.json`;
+  const link = `https://wheelgap.github.io/tracker/#package=${encodeURIComponent(p.name)}`;
+  return `[![wheels](${badge})](${link})`;
+}
+
 function renderLookup(query) {
-  const q = query.trim().toLowerCase().replace(/[-_.]+/g, "-");
+  const q = canonicalName(query.trim());
   if (!q) {
     $("lookup").innerHTML = "";
     return;
   }
-  const p = state.data.packages.find((x) => x.name.toLowerCase().replace(/[-_.]+/g, "-") === q);
+  const p = state.data.packages.find((x) => canonicalName(x.name) === q);
   if (!p) {
     $("lookup").innerHTML = `<div class="card"><p class="sub">${esc(query)} isn't in the top ${fmt(state.data.packages.length)}.
       Check it, or any package at a pinned version, locally: <code>uvx wheelgap ${esc(query.trim())} -t all</code></p></div>`;
@@ -194,7 +205,27 @@ function renderLookup(query) {
         ? ""
         : `<p class="sub" style="margin:12px 0 0">Why? <code>uvx wheelgap ${esc(p.name)}==${esc(p.version ?? "")} -p ${esc(state.python)} -t ${esc(state.platform)} --explain</code></p>`
     }
+    <div class="badge-snippet">
+      <p class="sub">Badge for your README</p>
+      <pre class="badge-md"><code>${esc(badgeMarkdown(p))}</code></pre>
+      <button type="button" class="copy-badge">Copy</button>
+    </div>
   </div>`;
+  const copy = $("lookup").querySelector(".copy-badge");
+  if (copy) {
+    const md = badgeMarkdown(p);
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(md);
+        copy.textContent = "Copied";
+        setTimeout(() => {
+          copy.textContent = "Copy";
+        }, 1500);
+      } catch {
+        copy.textContent = "Select and copy";
+      }
+    });
+  }
 }
 
 function readHash() {
