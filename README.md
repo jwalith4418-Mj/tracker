@@ -22,6 +22,16 @@ A package without a wheel for your platform is compiled from source on install (
 
 The data is CC0: use it for anything. The code is MIT.
 
+`data/most-wanted.json` lists up to 50 packages per target with `source` or `missing`
+results, ordered by download `rank`. Each entry has `rank`, `name`, `version` and
+`status`; packages with lookup errors are excluded. The file carries the scan's
+`generated` timestamp and a `targets` object keyed by label (for example,
+`"3.13 musl-aarch64"`). It is built when the site is published:
+
+```sh
+curl -fsS https://wheelgap.github.io/tracker/data/most-wanted.json
+```
+
 ## API for scripts and agents
 
 To check one package, fetch its own small file (about 1.3 KB) instead of the whole scan:
